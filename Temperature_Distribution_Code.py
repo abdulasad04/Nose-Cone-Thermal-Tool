@@ -1,6 +1,10 @@
 import numpy as np
 import copy
 from matplotlib import pyplot as plt
+import os
+import orhelper
+from orhelper import FlightDataType
+from scipy.optimize import fmin
 # NOTE!!!! This code must run with a textfile that includes the time in sec, temperature of the air in celcius, and speed of the rocket in m/s. In that order, yo ucan download the data from an openrocket simulation
 
 # Initial temperature of rocket in celcius
@@ -14,7 +18,7 @@ t = 6
 length = 0.563
 # radius of the tip of the nose cone measured in meters. The thickness of the nose cone is 2cm therefore that should be
 # the min tip radius
-radius_nc_tip = 0.002
+radius_nc_tip = 0.02
 # Material/thermal conductivity in W/m K
 conduc = 0.04
 # Specific heat capacity in J/Kg * K
@@ -99,6 +103,7 @@ def get_flux_heat_with_HWC(radius_nc_tip, v, temperature, pos):
 
 def thermal_tool(radius_nc_tip, length, T_init, diffusivity, emiss, conduc):
     '''Takes in the radius of the tip of the nose cone, the length, the initial temperature, the diffusivity, the emissivity, and the conductivity of the nose cone and returns the temperature profile'''
+
     simulation_values = open("openrocket_values.txt")
     line = simulation_values.readline()
     time = []
@@ -127,8 +132,9 @@ def thermal_tool(radius_nc_tip, length, T_init, diffusivity, emiss, conduc):
 
         while line:
             line = line.split()
-            heat_flux.append(get_flux_heat_with_HWC(radius_nc_tip, float(line[2]), Tstr[0][idx], x))
+            heat_flux.append(get_flux_heat_with_HWC(radius_nc_tip, float(line[2]), Tstr[idx], x))
             line = simulation_values.readline()
+            idx+=1
         #Recalculating heat flux based on new temperature
         x, t, Tstr = heat_solver(diffusivity, emiss, length, T_init, heat_flux, conduc)
 
