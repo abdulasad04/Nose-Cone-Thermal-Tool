@@ -1,8 +1,19 @@
 import numpy as np
 import copy
 from matplotlib import pyplot as plt
+import os
+import orhelper
+from orhelper import FlightDataType
+from orhelper import FlightDataType
+from scipy.optimize import fmin
 # NOTE!!!! This code must run with a textfile that includes the time in sec, temperature of the air in celcius, and speed of the rocket in m/s. In that order, yo ucan download the data from an openrocket simulation
-
+with orhelper.OpenRocketInstance() as instance:
+    orh = orhelper.Helper(instance)
+    doc = orh.load_doc(os.path.join("Defiance_OR.ork"))
+    sim = doc.getSimulation(0)
+    orh.run_simulation(sim)
+    data = orh.get_timeseries(sim,[FlightDataType.TYPE_TIME, FlightDataType.TYPE_VELOCITY_TOTAL, FlightDataType.TYPE_AIR_TEMPERATURE])
+    events = orh.get_events(sim)
 # Initial temperature of rocket in celcius
 T_init = 15
 #Time till motor burnout in s
@@ -39,12 +50,7 @@ def get_flux_heat(radius_nc_tip, v):
 def heat_solver(kappa, emiss, L, T_init, heat_flux, conduc):
     '''Solves for the temperature distribution of the cone at a certain time interval given the emissivity, diffusivity, length, initial temperature, conductivity, and heat flux of the nose cone'''
     steph_boltz_const = 5.67*10**-8
-    file = open("openrocket_values.txt")
-    line=file.readline()
     air_temp = []
-    while line:
-        air_temp.append(float(line[2]))
-        line = file.readline()
     #Based on values given in txt file
     time_steps = 158
     burnout_time = 6
@@ -68,7 +74,7 @@ def heat_solver(kappa, emiss, L, T_init, heat_flux, conduc):
             Tnew[0][idx2] = temperature[0][idx2-1] + kappa*(dt/delta_p**2)*(temperature[0][idx2+1]-2*temperature[0][idx2]+temperature[0][idx2-1])
         #boundary conditions
         # Equation: Tx = -x/k(qx + (T^4-Tair^4))+Tx+1
-        Tnew[0][0] = Tnew[0][1] - (delta_p/conduc) * (-heat_flux[idx] + emiss*steph_boltz_const*(temperature[0][0]**4 - air_temp[idx]**4))
+        Tnew[0][0] = Tnew[0][1] - (delta_p/conduc) * (-heat_flux[idx] + emiss*steph_boltz_const*(temperature[0][0]**4 - (data[FlightDataType.TYPE_AIR_TEMPERATURE][idx]-273)**4))
         # Tl = Tl-1
         Tnew[0][time_steps-1] = Tnew[0][time_steps-2]
         # Changing temperature and storing
@@ -99,17 +105,13 @@ def get_flux_heat_with_HWC(radius_nc_tip, v, temperature, pos):
 
 def thermal_tool(radius_nc_tip, length, T_init, diffusivity, emiss, conduc):
     '''Takes in the radius of the tip of the nose cone, the length, the initial temperature, the diffusivity, the emissivity, and the conductivity of the nose cone and returns the temperature profile'''
-    simulation_values = open("openrocket_values.txt")
-    line = simulation_values.readline()
     time = []
     heat_flux = []
-    while line:
-        line = line.split()
-        # Getting the speed from the textfile and using it to calculate the heat flux at that point in time
-        heat_flux.append(get_flux_heat(radius_nc_tip, float(line[2])))
-        # Gets the time to plot heat flux versus time
-        time.append(float(line[0]))
-        line = simulation_values.readline()
+    i = 1
+    while data[FlightDataType.TYPE_TIME][i] <=6.1:
+        heat_flux.append(get_flux_heat(radius_nc_tip, data[FlightDataType.TYPE_VELOCITY_TOTAL][i]))
+        time.append(data[FlightDataType.TYPE_TIME][i])
+        i +=1
 
     #Calculating initial temperature estimate
     x, t, Tstr = heat_solver(diffusivity, emiss, length, T_init, heat_flux, conduc)
@@ -123,12 +125,10 @@ def thermal_tool(radius_nc_tip, length, T_init, diffusivity, emiss, conduc):
         simulation_values = open("openrocket_values.txt")
         line = simulation_values.readline()
         heat_flux = []
-        idx = 0
-
-        while line:
-            line = line.split()
-            heat_flux.append(get_flux_heat_with_HWC(radius_nc_tip, float(line[2]), Tstr[0][idx], x))
-            line = simulation_values.readline()
+        idx = 1
+        while data[FlightDataType.TYPE_TIME][idx] <= 6.1:
+            heat_flux.append(get_flux_heat_with_HWC(radius_nc_tip, data[FlightDataType.TYPE_VELOCITY_TOTAL][idx], Tstr[idx], x))
+            idx += 1
         #Recalculating heat flux based on new temperature
         x, t, Tstr = heat_solver(diffusivity, emiss, length, T_init, heat_flux, conduc)
 
